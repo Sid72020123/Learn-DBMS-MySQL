@@ -476,3 +476,176 @@ ON T1.train_type = T2.train_type
 AND T1.train_no < T2.train_no;
 
 /* PART F: Subqueries */
+
+-- Find passengers whose age is greater than the average passenger age
+SELECT id, full_name, age
+FROM Passenger
+WHERE age > (
+    SELECT AVG(age)
+    FROM Passenger
+);
+
+-- Find trains whose destination matches the destination of train number 12001
+SELECT train_no, name, source, destination
+FROM Train
+WHERE destination = (
+    SELECT destination
+    FROM Train
+    WHERE train_no = 12001
+)
+AND train_no <> 12001;
+
+-- Find passengers who have a reservation with a fare greater than ₹1000
+SELECT id, full_name
+FROM Passenger
+WHERE id IN (
+    SELECT passenger_id
+    FROM Reservation
+    WHERE fare > 1000
+);
+
+-- Find trains whose reservation fare is lower than the average fare of all reservations
+SELECT train_no, name
+FROM Train
+WHERE train_no IN (
+    SELECT train_no
+    FROM Reservation
+    WHERE fare < (
+        SELECT AVG(fare)
+        FROM Reservation
+    )
+);
+
+-- Find passengers whose reservation fare is equal to the lowest reservation fare
+SELECT id, full_name
+FROM Passenger
+WHERE id IN (
+    SELECT passenger_id
+    FROM Reservation
+    WHERE fare = (
+        SELECT MIN(fare)
+        FROM Reservation
+    )
+);
+
+/* PART G: Views */
+
+-- Create a view displaying passengers with confirmed reservations
+CREATE VIEW Confirmed_Passengers_View AS
+SELECT P.id, P.full_name, P.contact_number,
+       R.reservation_id, R.journey_date, R.fare
+FROM Passenger P
+JOIN Reservation R
+ON P.id = R.passenger_id
+WHERE R.booking_status = 'CONFIRMED';
+
+-- Retrieve data from the confirmed passengers view
+SELECT *
+FROM Confirmed_Passengers_View;
+
+-- Create a view displaying train details and the number of reservations
+CREATE VIEW Train_Reservation_Count_View AS
+SELECT T.train_no, T.name AS train_name,
+       T.source, T.destination,
+       COUNT(R.reservation_id) AS total_reservations
+FROM Train T
+LEFT JOIN Reservation R
+ON T.train_no = R.train_no
+GROUP BY T.train_no, T.name, T.source, T.destination;
+
+-- Retrieve data from the above created view
+SELECT *
+FROM Train_Reservation_Count_View;
+
+/* PART H: Indexing */
+
+-- Create an index on train destination
+CREATE INDEX idx_train_destination
+ON Train(destination);
+
+-- Create a composite index on reservation status and journey date
+CREATE INDEX idx_reservation_status_date
+ON Reservation(booking_status, journey_date);
+
+-- Demonstrate index usage with an execution plan
+EXPLAIN
+SELECT reservation_id, journey_date, fare
+FROM Reservation
+WHERE booking_status = 'CONFIRMED'
+  AND journey_date = '2026-11-05';
+
+/* PART I: DCL Operations */
+
+-- Create a database user
+CREATE USER 'railway_manager'@'localhost'
+IDENTIFIED BY 'Railway@123';
+
+-- Grant SELECT and UPDATE privileges on the Passenger table
+GRANT SELECT, UPDATE
+ON RailwayReservationSystem.Passenger
+TO 'railway_manager'@'localhost';
+
+-- Revoke UPDATE privilege from the user
+REVOKE UPDATE
+ON RailwayReservationSystem.Passenger
+FROM 'railway_manager'@'localhost';
+
+/* PART J: TCL Operations */
+
+-- COMMIT: Insert a new reservation and save the transaction permanently
+START TRANSACTION;
+
+INSERT INTO Reservation
+VALUES (101, 3, 12003, '2026-11-21',
+        'C15', 'AC', 950, 'CONFIRMED');
+
+COMMIT;
+
+-- Verify the committed reservation
+SELECT *
+FROM Reservation
+WHERE reservation_id = 101;
+
+
+-- ROLLBACK: Update a reservation fare and undo the change
+START TRANSACTION;
+
+UPDATE Reservation
+SET fare = 1200
+WHERE reservation_id = 101;
+
+-- Check the updated fare before rollback
+SELECT reservation_id, fare
+FROM Reservation
+WHERE reservation_id = 101;
+
+ROLLBACK;
+
+-- Verify that the original fare has been restored
+SELECT reservation_id, fare
+FROM Reservation
+WHERE reservation_id = 101;
+
+
+-- SAVEPOINT: Insert a reservation, create a savepoint, and undo a later change
+START TRANSACTION;
+
+INSERT INTO Reservation
+VALUES (102, 4, 12004, '2026-11-22',
+        'D08', 'SL', 700, 'CONFIRMED');
+
+SAVEPOINT before_fare_update;
+
+UPDATE Reservation
+SET fare = 800
+WHERE reservation_id = 102;
+
+-- Undo only the update, keeping the inserted reservation
+ROLLBACK TO before_fare_update;
+
+COMMIT;
+
+-- Verify the final reservation details
+SELECT *
+FROM Reservation
+WHERE reservation_id = 102;
